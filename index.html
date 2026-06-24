@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Gate — AI Vehicle System</title>
+<style>
+/* ── Reset & Base ───────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0f1e; --card:#131d35; --panel:#0f1729;
+  --accent:#00d4ff; --violet:#7c3aed; --green:#10b981;
+  --text:#e2e8f0; --muted:#64748b; --border:rgba(0,212,255,0.15);
+  --shadow:0 20px 60px rgba(0,0,0,0.6);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;min-height:100vh;}
+
+/* demo page just so the widget has context */
+.demo-page{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;text-align:center;padding:40px;
+}
+.demo-page h1{font-size:2.4rem;color:var(--accent);margin-bottom:12px;}
+.demo-page p{color:var(--muted);font-size:1.1rem;max-width:500px;}
+.demo-hint{
+  margin-top:32px;padding:16px 24px;
+  background:rgba(0,212,255,0.06);border:1px solid var(--border);
+  border-radius:12px;color:var(--text);font-size:14px;line-height:1.8;
+}
+.demo-hint span{color:var(--accent);font-weight:700;}
+
+/* ════════════════════════════════════════════════
+   FAB ROBOT BUTTON
+════════════════════════════════════════════════ */
+#sg-fab{
+  position:fixed; bottom:32px; right:32px; z-index:2147483647;
+  width:64px; height:64px; border-radius:50%;
+  background:linear-gradient(135deg,var(--violet),var(--accent));
+  border:2px solid rgba(0,212,255,0.5);
+  cursor:grab; user-select:none; touch-action:none;
+  display:flex;align-items:center;justify-content:center;font-size:28px;
+  transition:transform 0.2s, box-shadow 0.2s;
+  animation:fab-pulse 2.5s ease-in-out infinite;
+}
+#sg-fab:hover{transform:scale(1.1);}
+#sg-fab.dragging{cursor:grabbing;transform:scale(1.14);animation:none;opacity:.9;}
+@keyframes fab-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(0,212,255,.4),0 8px 28px rgba(124,58,237,.45);}
+  50%     {box-shadow:0 0 0 10px rgba(0,212,255,0),0 8px 28px rgba(0,212,255,.5);}
+}
+
+/* ════════════════════════════════════════════════
+   CHAT PANEL
+════════════════════════════════════════════════ */
+#sg-panel{
+  position:fixed; bottom:110px; right:32px; z-index:2147483646;
+  width:400px; height:560px;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:22px; overflow:hidden;
+  display:none; flex-direction:column;
+  box-shadow:var(--shadow);
+  touch-action:none;
+}
+#sg-panel.open{display:flex;animation:panel-pop .28s cubic-bezier(.34,1.56,.64,1);}
+@keyframes panel-pop{
+  from{opacity:0;transform:scale(.88) translateY(16px);}
+  to  {opacity:1;transform:scale(1)   translateY(0);}
+}
+
+/* Header */
+.sg-hdr{
+  flex-shrink:0; cursor:move; user-select:none;
+  background:linear-gradient(90deg,#3b0764,var(--violet));
+  padding:13px 16px; display:flex; align-items:center; gap:10px;
+}
+.sg-hdr-av{
+  width:38px;height:38px;border-radius:11px;flex-shrink:0;
+  background:rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.sg-hdr-name{color:#f1f5f9;font-weight:700;font-size:14px;}
+.sg-hdr-sub {color:#c4b5fd;font-size:10px;margin-top:1px;}
+.sg-hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.sg-online{display:flex;align-items:center;gap:4px;color:#86efac;font-size:10px;}
+.sg-dot{width:7px;height:7px;background:#22c55e;border-radius:50%;animation:blink 1.5s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.sg-x{
+  width:28px;height:28px;border-radius:7px;border:none;cursor:pointer;
+  background:rgba(255,255,255,.12);color:#e2e8f0;font-size:15px;
+  display:flex;align-items:center;justify-content:center;transition:background .15s;
+}
+.sg-x:hover{background:rgba(255,255,255,.25);}
+
+/* Chips */
+.sg-chips{
+  flex-shrink:0;background:var(--panel);
+  padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px;
+  border-bottom:1px solid rgba(0,212,255,.08);
+}
+.sg-chip{
+  padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;
+  border:1px solid rgba(0,212,255,.18);background:var(--card);color:#cbd5e1;
+  transition:all .18s; font-family:inherit;
+}
+.sg-chip:hover{background:var(--violet);color:#fff;border-color:var(--violet);transform:translateY(-1px);}
+
+/* Messages */
+.sg-msgs{
+  flex:1;overflow-y:auto;padding:14px 12px;
+  display:flex;flex-direction:column;gap:12px;
+  scrollbar-width:thin;scrollbar-color:var(--violet) transparent;
+}
+.sg-msgs::-webkit-scrollbar{width:3px;}
+.sg-msgs::-webkit-scrollbar-thumb{background:var(--violet);border-radius:2px;}
+
+.sg-row{display:flex;gap:9px;animation:msg-in .25s ease;}
+.sg-row.user{flex-direction:row-reverse;}
+@keyframes msg-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+
+.sg-av{
+  width:32px;height:32px;border-radius:9px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  align-self:flex-start;margin-top:1px;
+}
+.sg-av.bot{background:linear-gradient(135deg,var(--accent),var(--violet));}
+.sg-av.usr{background:linear-gradient(135deg,var(--green),#0891b2);}
+
+.sg-bub{
+  max-width:83%;padding:11px 14px;border-radius:16px;
+  font-size:13px;line-height:1.75;color:var(--text);
+  word-break:break-word;
+}
+.sg-row.bot  .sg-bub{background:var(--card);border:1px solid var(--border);border-top-left-radius:3px;}
+.sg-row.user .sg-bub{background:rgba(0,212,255,.09);border:1px solid rgba(0,212,255,.18);border-top-right-radius:3px;}
+
+/* Content inside bubble */
+.sg-line{margin-bottom:3px;}
+.sg-list-item{padding-left:6px;margin-bottom:2px;}
+.sg-bub strong{color:var(--accent);}
+.sg-bub br{display:block;height:5px;content:"";}
+
+/* TABLE inside bubble */
+.sg-table-wrap{
+  overflow-x:auto;margin:8px 0;
+  border-radius:10px;border:1px solid var(--border);
+}
+.sg-table{
+  width:100%;border-collapse:collapse;font-size:12px;
+  background:var(--panel);
+}
+.sg-table thead tr{background:linear-gradient(90deg,rgba(124,58,237,.4),rgba(0,212,255,.2));}
+.sg-table th{
+  padding:8px 12px;text-align:left;
+  color:var(--accent);font-weight:700;
+  border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+.sg-table td{
+  padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.04);
+  vertical-align:top;
+}
+.sg-table tbody tr:last-child td{border-bottom:none;}
+.sg-table tbody tr:hover{background:rgba(0,212,255,.04);}
+.sg-table tbody tr:nth-child(even){background:rgba(0,0,0,.15);}
+
+/* Cursor blink */
+.sg-cur{
+  display:inline-block;width:2px;height:13px;background:var(--accent);
+  margin-left:1px;vertical-align:middle;
+  animation:cur-blink .55s step-end infinite;
+}
+@keyframes cur-blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Typing dots */
+.sg-typing{display:flex;gap:4px;align-items:center;padding:4px 0;}
+.sg-typing span{
+  width:7px;height:7px;background:var(--accent);border-radius:50%;
+  animation:t-bounce 1s ease infinite;
+}
+.sg-typing span:nth-child(2){animation-delay:.15s;}
+.sg-typing span:nth-child(3){animation-delay:.3s;}
+@keyframes t-bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
+
+/* Input area */
+.sg-inp-area{
+  flex-shrink:0;background:var(--panel);
+  border-top:1px solid rgba(0,212,255,.08);
+  padding:10px 11px;display:flex;gap:8px;align-items:flex-end;
+}
+#sg-inp{
+  flex:1;background:var(--card);
+  border:1px solid rgba(0,212,255,.18);border-radius:11px;
+  color:var(--text);font-size:13px;font-family:inherit;
+  padding:10px 13px;resize:none;outline:none;
+  min-height:40px;max-height:100px;line-height:1.5;transition:border-color .2s;
+}
+#sg-inp:focus{border-color:var(--accent);}
+#sg-inp::placeholder{color:var(--muted);}
+
+/* Voice button */
+#sg-voice{
+  width:40px;height:40px;flex-shrink:0;border-radius:11px;border:none;
+  background:var(--card);border:1px solid rgba(0,212,255,.2);
+  color:var(--text);font-size:18px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .18s;
+}
+#sg-voice:hover{background:rgba(0,212,255,.1);border-color:var(--accent);}
+#sg-voice.listening{
+  background:rgba(239,68,68,.15);border-color:#ef4444;color:#ef4444;
+  animation:mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
+
+/* Send button */
+#sg-send{
+  width:40px;height:40px;flex-shrink:0;border-radius:11px;border:none;
+  background:linear-gradient(135deg,var(--accent),var(--violet));
+  color:#fff;font-size:17px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:transform .15s;
+}
+#sg-send:hover{transform:scale(1.08);}
+#sg-send:active{transform:scale(.93);}
+#sg-send:disabled{opacity:.45;cursor:not-allowed;transform:none;}
+
+.sg-hint{text-align:center;font-size:10px;color:#334155;padding:3px 0 4px;font-family:inherit;}
+.sg-voice-status{
+  text-align:center;font-size:11px;color:#ef4444;
+  padding:0 0 4px;display:none;
+}
+.sg-voice-status.show{display:block;}
+</style>
+</head>
+<body>
+
+<!-- Demo page content (உங்க existing website content இங்க இருக்கும்) -->
+<div class="demo-page">
+  <div>
+    <h1>🚗 Smart Gate</h1>
+    <p>AI-Based Vehicle Identification System</p>
+    <div class="demo-hint">
+      <span>👉 Bottom-right corner-ல் 🤖 button தெரியும்!</span><br>
+      Click பண்ணி chatbot open பண்ணுங்க.<br>
+      Drag பண்ணி எங்கும் move பண்ணலாம்.<br>
+      🎤 Voice button → Tamil / English-ல் பேசலாம்!
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     FLOATING ROBOT BUTTON
+══════════════════════════════════════════ -->
+<div id="sg-fab" title="Smart Gate AI — drag me anywhere!">🤖</div>
+
+<!-- ══════════════════════════════════════════
+     CHAT PANEL
+══════════════════════════════════════════ -->
+<div id="sg-panel">
+
+  <!-- Header (drag handle) -->
+  <div class="sg-hdr" id="sg-hdr">
+    <div class="sg-hdr-av">🚗</div>
+    <div>
+      <div class="sg-hdr-name">Smart Gate AI</div>
+      <div class="sg-hdr-sub">Project Assistant • Offline ✅</div>
+    </div>
+    <div class="sg-hdr-right">
+      <div class="sg-online"><div class="sg-dot"></div>Online</div>
+      <button class="sg-x" id="sg-close">✕</button>
+    </div>
+  </div>
+
+  <!-- Quick chips -->
+  <div class="sg-chips">
+    <button class="sg-chip" onclick="sgAsk('explain project')">📋 Project</button>
+    <button class="sg-chip" onclick="sgAsk('tech stack')">🔧 Tech</button>
+    <button class="sg-chip" onclick="sgAsk('how it works')">⚙️ Work</button>
+    <button class="sg-chip" onclick="sgAsk('vehicle logs')">📋 Logs</button>
+  </div>
+
+  <!-- Messages area -->
+  <div class="sg-msgs" id="sg-msgs"></div>
+
+  <!-- Voice status -->
+  <div class="sg-voice-status" id="sg-voice-status">🎤 Listening... பேசுங்க!</div>
+
+  <!-- Input area -->
+  <div class="sg-inp-area">
+    <textarea id="sg-inp"
+      placeholder="Tamil / English-ல கேளுங்க... (Enter=Send)"
+      rows="1"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sgSend();}"></textarea>
+    <button id="sg-voice" title="Voice input — click & speak" onclick="sgVoice()">🎤</button>
+    <button id="sg-send" onclick="sgSend()">➤</button>
+  </div>
+  <div class="sg-hint">Enter = Send &nbsp;·&nbsp; Shift+Enter = New line &nbsp;·&nbsp; 🎤 = Voice</div>
+
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ══════════════════════════════════════════
+   DRAG — FAB button
+══════════════════════════════════════════ */
+function makeDraggable(el, onClick){
+  let sx,sy,sleft,stop,moved;
+  function pos(e){return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};}
+  function down(e){
+    var p=pos(e); sx=p.x;sy=p.y;
+    var r=el.getBoundingClientRect(); sleft=r.left;stop=r.top; moved=false;
+    el.classList.add('dragging');
+    document.addEventListener('mousemove',move);
+    document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up);
+    document.addEventListener('touchend',up);
+    e.preventDefault();
+  }
+  function move(e){
+    var p=pos(e),dx=p.x-sx,dy=p.y-sy;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) moved=true;
+    if(!moved) return;
+    var W=window.innerWidth,H=window.innerHeight,w=el.offsetWidth,h=el.offsetHeight;
+    var nx=Math.max(0,Math.min(sleft+dx,W-w));
+    var ny=Math.max(0,Math.min(stop+dy,H-h));
+    el.style.left=nx+'px';el.style.top=ny+'px';el.style.right='auto';el.style.bottom='auto';
+    e.preventDefault();
+  }
+  function up(){
+    el.classList.remove('dragging');
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('touchmove',move);
+    document.removeEventListener('mouseup',up);
+    document.removeEventListener('touchend',up);
+    if(!moved && onClick) onClick();
+  }
+  el.addEventListener('mousedown',down);
+  el.addEventListener('touchstart',down,{passive:false});
+}
+
+/* ══════════════════════════════════════════
+   DRAG — Chat Panel via header
+══════════════════════════════════════════ */
+function makePanelDraggable(panel,handle){
+  var sx,sy,sl,st;
+  function pos(e){return e.touches?{x:e.touches[0].clientX,y:e.touches[0].clientY}:{x:e.clientX,y:e.clientY};}
+  function down(e){
+    if(e.target.id==='sg-close') return;
+    var p=pos(e); sx=p.x;sy=p.y;
+    var r=panel.getBoundingClientRect(); sl=r.left;st=r.top;
+    document.addEventListener('mousemove',move);
+    document.addEventListener('touchmove',move,{passive:false});
+    document.addEventListener('mouseup',up);
+    document.addEventListener('touchend',up);
+    e.preventDefault();
+  }
+  function move(e){
+    var p=pos(e),dx=p.x-sx,dy=p.y-sy;
+    var W=window.innerWidth,H=window.innerHeight,w=panel.offsetWidth,h=panel.offsetHeight;
+    var nx=Math.max(0,Math.min(sl+dx,W-w));
+    var ny=Math.max(0,Math.min(st+dy,H-h));
+    panel.style.left=nx+'px';panel.style.top=ny+'px';panel.style.right='auto';panel.style.bottom='auto';
+    e.preventDefault();
+  }
+  function up(){
+    document.removeEventListener('mousemove',move);
+    document.removeEventListener('touchmove',move);
+    document.removeEventListener('mouseup',up);
+    document.removeEventListener('touchend',up);
+  }
+  handle.addEventListener('mousedown',down);
+  handle.addEventListener('touchstart',down,{passive:false});
+}
+
+/* ══════════════════════════════════════════
+   CHAT UI
+══════════════════════════════════════════ */
+var isOpen=false, isBusy=false;
+
+function sgToggle(){
+  var panel=document.getElementById('sg-panel');
+  var fab=document.getElementById('sg-fab');
+  isOpen=!isOpen;
+  if(isOpen){
+    panel.classList.add('open');
+    fab.textContent='✕';
+    if(!document.getElementById('sg-msgs').children.length) sgWelcome();
+  } else {
+    panel.classList.remove('open');
+    fab.textContent='🤖';
+  }
+}
+
+function addMsg(sender){
+  var msgs=document.getElementById('sg-msgs');
+  var row=document.createElement('div');
+  row.className='sg-row '+sender;
+  var av=document.createElement('div');
+  av.className='sg-av '+(sender==='user'?'usr':'bot');
+  av.textContent=sender==='user'?'👤':'🤖';
+  var bub=document.createElement('div');
+  bub.className='sg-bub';
+  if(sender==='user'){row.appendChild(bub);row.appendChild(av);}
+  else{row.appendChild(av);row.appendChild(bub);}
+  msgs.appendChild(row);
+  msgs.scrollTop=99999;
+  return bub;
+}
+
+function addTyping(){
+  var msgs=document.getElementById('sg-msgs');
+  var row=document.createElement('div');
+  row.className='sg-row bot'; row.id='sg-typ';
+  var av=document.createElement('div');
+  av.className='sg-av bot'; av.textContent='🤖';
+  var bub=document.createElement('div');
+  bub.className='sg-bub';
+  bub.innerHTML='<div class="sg-typing"><span></span><span></span><span></span></div>';
+  row.appendChild(av); row.appendChild(bub);
+  msgs.appendChild(row); msgs.scrollTop=99999;
+}
+
+function removeTyping(){
+  var t=document.getElementById('sg-typ'); if(t) t.remove();
+}
+
+/* Stream HTML content char-by-char for text nodes, instant for tables */
+function streamHTML(bub, html){
+  // Extract tables out — render them instantly, stream only text parts
+  var parts = html.split(/(<div class="sg-table-wrap">[\s\S]*?<\/div>)/g);
+  var combined = '';
+  var textToStream = '';
+  var tableHtmls = [];
+  var order = []; // 'text' or 'table'
+
+  parts.forEach(function(part){
+    if(part.startsWith('<div class="sg-table-wrap">')){
+      order.push({type:'table', html:part});
+    } else if(part.trim()){
+      order.push({type:'text', html:part});
+    }
+  });
+
+  var partIdx = 0;
+  function renderNext(){
+    if(partIdx >= order.length){
+      isBusy=false;
+      document.getElementById('sg-send').disabled=false;
+      return;
+    }
+    var part = order[partIdx++];
+    if(part.type === 'table'){
+      bub.innerHTML += part.html;
+      document.getElementById('sg-msgs').scrollTop=99999;
+      setTimeout(renderNext, 60);
+    } else {
+      // stream text
+      var raw = part.html;
+      var i = 0;
+      var current = bub.innerHTML;
+      function step(){
+        if(i <= raw.length){
+          bub.innerHTML = current + raw.slice(0,i) + (i<raw.length?'<span class="sg-cur"></span>':'');
+          document.getElementById('sg-msgs').scrollTop=99999;
+          var spd = raw.length > 400 ? 6 : 12;
+          i += (raw.length > 500 ? 5 : 2);
+          setTimeout(step, spd);
+        } else {
+          bub.innerHTML = current + raw;
+          renderNext();
+        }
+      }
+      step();
+    }
+  }
+  renderNext();
+}
+
+function sgWelcome(){
+  var bub = addMsg('bot');
+  isBusy = true;
+  document.getElementById('sg-send').disabled = true;
+  streamHTML(bub, '<div class="sg-line">வணக்கம்! 🙏 நான் <strong>Smart Gate AI Assistant</strong>!</div><br><div class="sg-line">Smart Gate project பத்தி எத வேணும்னாலும் கேளுங்க.</div><div class="sg-line">Project Detail, Tech Stack, Workflow — எது வேணும்னாலும் ok! 🚗✨</div><br><div class="sg-line">🎤 Voice button-ஐ press பண்ணி பேசலாம்!</div>');
+}
+
+window.sgSend = function(){
+  if(isBusy) return;
+  var inp=document.getElementById('sg-inp');
+  var q=inp.value.trim(); if(!q) return;
+  inp.value=''; inp.style.height='auto';
+  isBusy=true;
+  document.getElementById('sg-send').disabled=true;
+
+  // User bubble (plain text)
+  var ub=addMsg('user'); ub.textContent=q;
+
+  // Typing indicator
+  addTyping();
+
+  // Flask API call
+  fetch('/chat',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:q})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    removeTyping();
+    var bub=addMsg('bot');
+    streamHTML(bub, data.html || data.text || '😊');
+  })
+  .catch(function(err){
+    removeTyping();
+    var bub=addMsg('bot');
+    bub.textContent='⚠️ Error: '+err.message+' — Flask server running-ஆ check பண்ணுங்க.';
+    isBusy=false;
+    document.getElementById('sg-send').disabled=false;
+  });
+};
+
+window.sgAsk = function(q){
+  document.getElementById('sg-inp').value=q;
+  sgSend();
+};
+
+/* ══════════════════════════════════════════
+   VOICE INPUT
+══════════════════════════════════════════ */
+var recognition = null;
+var isListening = false;
+
+function initVoice(){
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition) return null;
+  var r = new SpeechRecognition();
+  r.continuous = false;
+  r.interimResults = true;
+  r.lang = 'ta-IN'; // Tamil — will also accept English
+
+  r.onresult = function(e){
+    var transcript = '';
+    for(var i=0;i<e.results.length;i++){
+      transcript += e.results[i][0].transcript;
+    }
+    document.getElementById('sg-inp').value = transcript;
+    if(e.results[e.results.length-1].isFinal){
+      stopListening();
+      setTimeout(function(){ sgSend(); }, 300);
+    }
+  };
+
+  r.onerror = function(e){
+    stopListening();
+    // fallback to English if Tamil fails
+    if(e.error === 'language-not-supported' || e.error === 'no-speech'){
+      r.lang = 'en-IN';
+    }
+  };
+
+  r.onend = function(){ stopListening(); };
+  return r;
+}
+
+function startListening(){
+  if(!recognition) recognition = initVoice();
+  if(!recognition){
+    alert('உங்கள் browser-ல் Voice support இல்ல. Chrome use பண்ணுங்க!');
+    return;
+  }
+  // Try Tamil first, fallback English
+  recognition.lang = 'ta-IN';
+  try { recognition.start(); } catch(e){}
+  isListening = true;
+  document.getElementById('sg-voice').classList.add('listening');
+  document.getElementById('sg-voice').textContent = '🔴';
+  var vs = document.getElementById('sg-voice-status');
+  vs.classList.add('show');
+}
+
+function stopListening(){
+  if(recognition) try { recognition.stop(); } catch(e){}
+  isListening = false;
+  document.getElementById('sg-voice').classList.remove('listening');
+  document.getElementById('sg-voice').textContent = '🎤';
+  document.getElementById('sg-voice-status').classList.remove('show');
+}
+
+window.sgVoice = function(){
+  if(isListening) stopListening();
+  else startListening();
+};
+
+/* ══════════════════════════════════════════
+   INIT
+══════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function(){
+  var fab    = document.getElementById('sg-fab');
+  var panel  = document.getElementById('sg-panel');
+  var handle = document.getElementById('sg-hdr');
+  var closeB = document.getElementById('sg-close');
+  var inp    = document.getElementById('sg-inp');
+
+  makeDraggable(fab, sgToggle);
+  makePanelDraggable(panel, handle);
+
+  closeB.addEventListener('click', function(e){
+    e.stopPropagation(); sgToggle();
+  });
+
+  inp.addEventListener('input', function(){
+    this.style.height='auto';
+    this.style.height=Math.min(this.scrollHeight,100)+'px';
+  });
+});
+
+})();
+</script>
+</body>
+</html>
