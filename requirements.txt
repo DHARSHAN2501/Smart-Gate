@@ -1,0 +1,9 @@
+flask
+mysql-connector-python
+pandas
+opencv-python
+easyocr
+ultralytics
+numpy
+PyPDF2
+python-docx
